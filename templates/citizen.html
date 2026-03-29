@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Citizen Dashboard — Smart Waste Reporting</title>
+  <link rel="stylesheet" href="/static/styles.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <style>
+    .citizen-layout { background: var(--gray-100); }
+
+    /* Greeting strip */
+    .greeting-strip {
+      background: linear-gradient(90deg, var(--green-700), var(--green-600));
+      padding: 14px 32px;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 8px;
+    }
+    .greeting-strip p { color: var(--green-100); font-size: 13.5px; }
+    .greeting-strip p strong { color: var(--white); }
+    .ticket-count {
+      background: rgba(255,255,255,.15);
+      color: var(--white);
+      padding: 4px 14px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    /* History panel */
+    .history-panel {
+      background: var(--white);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-md);
+      padding: 24px;
+      margin-top: 24px;
+    }
+    .history-panel h3 {
+      font-family: var(--font-display);
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--gray-800);
+      margin-bottom: 16px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .history-panel h3 i { color: var(--green-500); }
+
+    .history-item {
+      display: flex; align-items: center; gap: 14px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--gray-100);
+      animation: rowIn .3s ease;
+    }
+    .history-item:last-child { border-bottom: none; }
+    .history-icon {
+      width: 40px; height: 40px;
+      border-radius: 10px;
+      background: var(--green-100);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--green-600); font-size: 16px; flex-shrink: 0;
+    }
+    .history-info { flex: 1; min-width: 0; }
+    .history-info p { font-size: 13.5px; font-weight: 500; color: var(--gray-800); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .history-info span { font-size: 12px; color: var(--gray-400); }
+    .history-empty { text-align: center; padding: 24px; color: var(--gray-400); font-size: 14px; }
+    .history-empty i { font-size: 28px; color: var(--gray-200); margin-bottom: 8px; display: block; }
+
+    /* Days helper chips */
+    .days-chips { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+    .day-chip {
+      padding: 5px 14px;
+      border-radius: 999px;
+      font-size: 12.5px;
+      font-weight: 600;
+      border: 1.5px solid var(--gray-200);
+      cursor: pointer;
+      transition: var(--transition);
+      background: var(--gray-50);
+      color: var(--gray-600);
+    }
+    .day-chip:hover { border-color: var(--green-400); color: var(--green-700); }
+    .day-chip.active { background: var(--green-500); color: var(--white); border-color: var(--green-500); }
+
+    @media (max-width: 640px) {
+      .greeting-strip { padding: 12px 16px; }
+      .citizen-header { padding: 0 16px; }
+    }
+  </style>
+</head>
+<body>
+<div class="citizen-layout">
+
+  <!-- Header -->
+  <header class="citizen-header">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div class="admin-header" style="background:none;box-shadow:none;height:auto;padding:0;position:static;">
+        <div class="brand">
+          <div class="brand-icon"><i class="fa-solid fa-leaf"></i></div>
+          <div class="brand-text">
+            <h1>Smart Waste Reporting</h1>
+            <span>Citizen Portal</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span style="color:var(--green-300);font-size:13px;"><i class="fa-regular fa-user" style="margin-right:5px;"></i>{{ username }}</span>
+      <a href="/logout" class="btn btn-sm" style="background:rgba(255,255,255,.1);color:var(--white);border:1px solid rgba(255,255,255,.2);">
+        <i class="fa-solid fa-right-from-bracket"></i> Logout
+      </a>
+    </div>
+  </header>
+
+  <!-- Greeting Strip -->
+  <div class="greeting-strip">
+    <p>Welcome back! <strong>Raise a waste complaint</strong> and track your reports below.</p>
+    <span class="ticket-count" id="ticketCountStrip"><i class="fa-solid fa-ticket" style="margin-right:4px;"></i> {{ ticket_count }} Ticket{{ 's' if ticket_count != 1 else '' }} Raised</span>
+  </div>
+
+  <!-- Main -->
+  <div class="citizen-main">
+    <div style="width:100%;max-width:680px;">
+
+      <!-- Form Card -->
+      <div class="form-card">
+        <div class="form-card-header">
+          <h2><i class="fa-solid fa-circle-plus" style="margin-right:8px;"></i>Raise a Complaint</h2>
+          <p>Fill in the details below to report a waste collection issue</p>
+        </div>
+        <div class="form-card-body">
+
+          <!-- Success alert -->
+          {% if success %}
+          <div class="alert alert-success show">
+            <i class="fa-solid fa-circle-check" style="font-size:18px;"></i>
+            <div>
+              <div style="font-weight:700;">Complaint submitted successfully!</div>
+              <div style="font-size:12.5px;opacity:.85;">{{ success }}</div>
+            </div>
+          </div>
+          {% endif %}
+
+          <form id="ticketForm" method="POST" action="/submit" enctype="multipart/form-data" novalidate>
+
+            <!-- Area -->
+            <div class="form-group">
+              <label for="area"><i class="fa-solid fa-location-dot" style="margin-right:4px;"></i> Select Area</label>
+              <div class="input-wrap">
+                <i class="fa-solid fa-location-dot icon"></i>
+                <select id="area" name="area" class="form-control">
+                  <option value="">— Choose your area —</option>
+                  <option value="Pallavaram">Pallavaram</option>
+                  <option value="Chromepet">Chromepet</option>
+                  <option value="Tambaram">Tambaram</option>
+                </select>
+              </div>
+              <span class="error-msg" id="areaErr"><i class="fa-solid fa-circle-exclamation"></i> Please select an area.</span>
+            </div>
+
+            <!-- Days -->
+            <div class="form-group">
+              <label for="days"><i class="fa-regular fa-calendar-xmark" style="margin-right:4px;"></i> Days Bin Unchecked</label>
+              <div class="input-wrap">
+                <i class="fa-regular fa-calendar-xmark icon"></i>
+                <input type="number" id="days" name="days" class="form-control" placeholder="e.g. 2" min="1" max="30" oninput="updateETA()"/>
+              </div>
+              <div class="days-chips" id="daysChips">
+                <span class="day-chip" onclick="setDays(1)">1 day</span>
+                <span class="day-chip" onclick="setDays(2)">2 days</span>
+                <span class="day-chip" onclick="setDays(3)">3 days</span>
+                <span class="day-chip" onclick="setDays(5)">5 days</span>
+              </div>
+              <span class="error-msg" id="daysErr"><i class="fa-solid fa-circle-exclamation"></i> Please enter a valid number of days.</span>
+            </div>
+
+            <!-- ETA Banner -->
+            <div class="eta-banner" id="etaBanner">
+              <i class="fa-solid fa-clock"></i>
+              <div>
+                <span style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;opacity:.7;">Estimated Response Time</span>
+                <div id="etaText">—</div>
+              </div>
+            </div>
+
+            <!-- Description -->
+            <div class="form-group">
+              <label for="desc"><i class="fa-regular fa-file-lines" style="margin-right:4px;"></i> Issue Description</label>
+              <div class="input-wrap textarea-wrap">
+                <i class="fa-regular fa-file-lines icon"></i>
+                <textarea id="desc" name="desc" class="form-control" rows="4" placeholder="Describe the waste issue in detail (location, type of waste, etc.)…"></textarea>
+              </div>
+              <span class="error-msg" id="descErr"><i class="fa-solid fa-circle-exclamation"></i> Please describe the issue.</span>
+            </div>
+
+            <!-- Image Upload -->
+            <div class="form-group">
+              <label><i class="fa-regular fa-image" style="margin-right:4px;"></i> Upload Image (optional)</label>
+              <div class="file-upload-area" id="uploadArea">
+                <input type="file" id="imgFile" name="image" accept="image/*" onchange="handleFile(this)"/>
+                <i class="fa-solid fa-cloud-arrow-up"></i>
+                <p><strong>Click to upload</strong> or drag & drop</p>
+                <p style="font-size:12px;margin-top:4px;">PNG, JPG, WEBP up to 5MB</p>
+                <div class="file-preview" id="filePreview">
+                  <img id="previewImg" src="" alt="Preview"/>
+                  <div class="file-name" id="fileName"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Submit -->
+            <button type="submit" class="btn btn-primary btn-full" id="submitBtn">
+              <i class="fa-solid fa-paper-plane"></i> Submit Complaint
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- History -->
+      <div class="history-panel">
+        <h3><i class="fa-solid fa-clock-rotate-left"></i> My Complaints</h3>
+        <div id="historyList">
+          {% if tickets|length == 0 %}
+          <div class="history-empty">
+            <i class="fa-regular fa-folder-open"></i>
+            No complaints yet. Submit your first report above.
+          </div>
+          {% else %}
+            {% for t in tickets %}
+            <div class="history-item">
+              <div class="history-icon"><i class="fa-solid fa-trash-can"></i></div>
+              <div class="history-info">
+                <p><strong>#{{ t.id }}</strong> · {{ t.area }} — {{ t.description[:50] }}{{ '…' if t.description|length > 50 else '' }}</p>
+                <span><i class="fa-regular fa-clock" style="margin-right:4px;"></i>{{ t.created_at }} · ETA: {{ t.estimated_time }}</span>
+              </div>
+              <span class="badge {{ 'badge-resolved' if t.status == 'Resolved' else 'badge-pending' }}">{{ t.status }}</span>
+            </div>
+            {% endfor %}
+          {% endif %}
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  function getETA(days) {
+    if (days <= 0) return null;
+    if (days === 1) return { text: 'Within 24 hours', urgent: false };
+    if (days === 2) return { text: 'Within 12 hours', urgent: false };
+    return { text: 'Immediate action required', urgent: true };
+  }
+
+  function updateETA() {
+    const days = parseInt(document.getElementById('days').value);
+    const banner = document.getElementById('etaBanner');
+    const chips = document.querySelectorAll('.day-chip');
+    chips.forEach(c => c.classList.remove('active'));
+
+    if (!days || days < 1) { banner.classList.remove('show'); return; }
+
+    [1,2,3,5].forEach((v,i) => { if (v === days) chips[i].classList.add('active'); });
+
+    const eta = getETA(days);
+    document.getElementById('etaText').textContent = eta.text;
+    banner.className = 'eta-banner show' + (eta.urgent ? ' urgent' : '');
+  }
+
+  function setDays(n) {
+    document.getElementById('days').value = n;
+    updateETA();
+  }
+
+  function handleFile(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      document.getElementById('previewImg').src = e.target.result;
+      document.getElementById('fileName').textContent = file.name;
+      document.getElementById('filePreview').style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // Drag & drop
+  const ua = document.getElementById('uploadArea');
+  ['dragover','dragleave','drop'].forEach(ev => {
+    ua.addEventListener(ev, e => {
+      e.preventDefault();
+      ua.classList.toggle('drag-over', ev === 'dragover');
+      if (ev === 'drop') {
+        const f = e.dataTransfer.files[0];
+        if (f && f.type.startsWith('image/')) {
+          document.getElementById('imgFile').files = e.dataTransfer.files;
+          handleFile({ files: e.dataTransfer.files });
+        }
+      }
+    });
+  });
+
+  // Client-side validation before submit
+  document.getElementById('ticketForm').addEventListener('submit', function(e) {
+    const area = document.getElementById('area').value;
+    const days = parseInt(document.getElementById('days').value);
+    const desc = document.getElementById('desc').value.trim();
+    let valid = true;
+
+    ['areaErr','daysErr','descErr'].forEach(id => document.getElementById(id).classList.remove('show'));
+    ['area','days','desc'].forEach(id => document.getElementById(id).classList.remove('is-invalid'));
+
+    if (!area) {
+      document.getElementById('areaErr').classList.add('show');
+      document.getElementById('area').classList.add('is-invalid');
+      valid = false;
+    }
+    if (!days || days < 1) {
+      document.getElementById('daysErr').classList.add('show');
+      document.getElementById('days').classList.add('is-invalid');
+      valid = false;
+    }
+    if (!desc) {
+      document.getElementById('descErr').classList.add('show');
+      document.getElementById('desc').classList.add('is-invalid');
+      valid = false;
+    }
+    if (!valid) e.preventDefault();
+  });
+</script>
+</body>
+</html>

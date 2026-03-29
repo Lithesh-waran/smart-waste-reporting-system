@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin Dashboard — Smart Waste Reporting</title>
+  <link rel="stylesheet" href="/static/styles.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <style>
+    /* Sidebar accent line */
+    .admin-layout { background: var(--gray-100); }
+
+    /* Filter bar */
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .filter-chip {
+      padding: 6px 16px;
+      border-radius: 999px;
+      font-size: 12.5px;
+      font-weight: 600;
+      border: 1.5px solid var(--gray-200);
+      background: var(--white);
+      cursor: pointer;
+      transition: var(--transition);
+      color: var(--gray-600);
+    }
+    .filter-chip:hover { border-color: var(--green-400); color: var(--green-700); }
+    .filter-chip.active { background: var(--green-500); color: var(--white); border-color: var(--green-500); }
+
+    /* Resolve btn animation */
+    .resolve-btn { transition: var(--transition); }
+    .resolve-btn:disabled {
+      background: var(--gray-200) !important;
+      color: var(--gray-400) !important;
+      box-shadow: none !important;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    /* Empty state */
+    .empty-row td {
+      text-align: center;
+      padding: 48px !important;
+      color: var(--gray-400);
+      font-size: 14px;
+    }
+    .empty-row td i { font-size: 36px; color: var(--gray-200); margin-bottom: 12px; display: block; }
+
+    /* Search input */
+    .search-wrap { position: relative; }
+    .search-wrap input {
+      padding: 9px 14px 9px 38px;
+      border: 1.5px solid var(--gray-200);
+      border-radius: var(--radius-md);
+      font-family: var(--font-body);
+      font-size: 14px;
+      width: 220px;
+      outline: none;
+      background: var(--white);
+      transition: var(--transition);
+    }
+    .search-wrap input:focus { border-color: var(--green-400); box-shadow: 0 0 0 3px rgba(45,158,95,.1); }
+    .search-wrap i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--gray-400); font-size: 14px; }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 28px; right: 28px;
+      background: var(--green-700);
+      color: var(--white);
+      padding: 14px 20px;
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-lg);
+      display: flex; align-items: center; gap: 10px;
+      font-size: 14px; font-weight: 500;
+      z-index: 9999;
+      transform: translateY(80px);
+      opacity: 0;
+      transition: all .3s cubic-bezier(.4,0,.2,1);
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+
+    /* Priority dot */
+    .priority-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 6px;
+    }
+    .dot-high { background: #ef4444; box-shadow: 0 0 6px rgba(239,68,68,.5); }
+    .dot-mid  { background: #f59e0b; }
+    .dot-low  { background: var(--green-500); }
+
+    /* desc cell */
+    .desc-cell { max-width: 220px; }
+    .desc-cell p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13.5px; }
+
+    /* Area badge */
+    .area-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: var(--green-50);
+      border: 1px solid var(--green-200);
+      color: var(--green-800);
+      padding: 3px 10px;
+      border-radius: var(--radius-sm);
+      font-size: 12.5px; font-weight: 600;
+    }
+
+    @media (max-width: 768px) {
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .filter-bar { gap: 6px; }
+      .search-wrap input { width: 160px; }
+    }
+  </style>
+</head>
+<body>
+<div class="admin-layout">
+
+  <!-- Header -->
+  <header class="admin-header">
+    <div class="brand">
+      <div class="brand-icon"><i class="fa-solid fa-leaf"></i></div>
+      <div class="brand-text">
+        <h1>Municipal Waste Management Dashboard</h1>
+        <span>Admin Control Panel · Chennai</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span style="color:var(--green-300);font-size:12.5px;"><i class="fa-solid fa-circle" style="color:var(--green-400);font-size:8px;margin-right:5px;"></i>Live</span>
+      <a href="/logout" class="btn btn-danger btn-sm">
+        <i class="fa-solid fa-right-from-bracket"></i> Logout
+      </a>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="admin-main">
+
+    <!-- Stats -->
+    <div class="stats-grid">
+      <div class="stat-card green">
+        <div class="stat-icon"><i class="fa-solid fa-ticket"></i></div>
+        <div class="stat-info">
+          <p>Total Tickets</p>
+          <h3 id="statTotal">{{ stats.total }}</h3>
+        </div>
+      </div>
+      <div class="stat-card red">
+        <div class="stat-icon"><i class="fa-solid fa-hourglass-half"></i></div>
+        <div class="stat-info">
+          <p>Pending</p>
+          <h3 id="statPending">{{ stats.pending }}</h3>
+        </div>
+      </div>
+      <div class="stat-card amber">
+        <div class="stat-icon"><i class="fa-solid fa-bolt"></i></div>
+        <div class="stat-info">
+          <p>Urgent</p>
+          <h3 id="statUrgent">{{ stats.urgent }}</h3>
+        </div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-icon"><i class="fa-solid fa-circle-check"></i></div>
+        <div class="stat-info">
+          <p>Resolved</p>
+          <h3 id="statResolved">{{ stats.resolved }}</h3>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <h2><i class="fa-solid fa-list-check"></i> Complaint Tickets</h2>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <div class="search-wrap">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" id="searchInput" placeholder="Search area or issue…" oninput="filterTable()"/>
+          </div>
+          <div class="filter-bar">
+            <span class="filter-chip active" data-filter="all" onclick="setFilter('all',this)">All</span>
+            <span class="filter-chip" data-filter="Pending" onclick="setFilter('Pending',this)">Pending</span>
+            <span class="filter-chip" data-filter="Resolved" onclick="setFilter('Resolved',this)">Resolved</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Area</th>
+              <th>Days</th>
+              <th style="min-width:180px;">Issue Description</th>
+              <th>Image</th>
+              <th>Status</th>
+              <th>Est. Response</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="ticketTableBody">
+            {% if tickets|length == 0 %}
+            <tr class="empty-row"><td colspan="8"><i class="fa-solid fa-inbox"></i>No tickets yet. Tickets submitted by citizens appear here.</td></tr>
+            {% else %}
+              {% for t in tickets %}
+              <tr data-status="{{ t.status }}" data-area="{{ t.area|lower }}" data-desc="{{ t.description|lower }}" style="animation: rowIn .25s ease {{ loop.index0 * 0.04 }}s both;">
+                <td style="font-family:var(--font-display);font-weight:700;color:var(--gray-800);">#{{ t.id }}</td>
+                <td><span class="area-badge"><i class="fa-solid fa-location-dot"></i>{{ t.area }}</span></td>
+                <td style="text-align:center;">
+                  <span class="priority-dot {{ 'dot-high' if t.urgent else ('dot-mid' if t.days == 2 else 'dot-low') }}"></span>
+                  <strong style="color:var(--gray-800);">{{ t.days }}</strong>
+                </td>
+                <td class="desc-cell"><p title="{{ t.description }}">{{ t.description }}</p></td>
+                <td>
+                  {% if t.image %}
+                  <img src="/static/uploads/{{ t.image }}" class="thumb-img" onclick="openModal('/static/uploads/{{ t.image }}')" title="Click to enlarge" alt="Ticket image"/>
+                  {% else %}
+                  <div class="no-img"><i class="fa-regular fa-image"></i></div>
+                  {% endif %}
+                </td>
+                <td>
+                  <span class="badge {{ 'badge-resolved' if t.status == 'Resolved' else 'badge-pending' }}">
+                    <i class="fa-solid {{ 'fa-circle-check' if t.status == 'Resolved' else 'fa-circle-dot' }}"></i>
+                    {{ t.status }}
+                  </span>
+                </td>
+                <td style="font-size:13px;{{ 'color:#b91c1c;font-weight:600;' if t.urgent and t.status != 'Resolved' else 'color:var(--gray-600);' }}">
+                  {% if t.urgent and t.status != 'Resolved' %}<i class="fa-solid fa-triangle-exclamation" style="margin-right:4px;"></i>{% endif %}
+                  {{ t.estimated_time }}
+                </td>
+                <td>
+                  {% if t.status == 'Resolved' %}
+                  <button class="btn btn-sm btn-primary resolve-btn" disabled>
+                    <i class="fa-solid fa-check"></i> Done
+                  </button>
+                  {% else %}
+                  <form method="POST" action="/resolve/{{ t.id }}" style="display:inline;">
+                    <button type="submit" class="btn btn-sm btn-primary resolve-btn">
+                      <i class="fa-solid fa-check-double"></i> Resolve
+                    </button>
+                  </form>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Image Modal -->
+<div class="modal-overlay" id="imgModal" onclick="closeModal(event)">
+  <div class="modal-box">
+    <button class="modal-close" onclick="document.getElementById('imgModal').classList.remove('open')"><i class="fa-solid fa-xmark"></i></button>
+    <img id="modalImg" src="" alt="Ticket Image"/>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast">
+  <i class="fa-solid fa-circle-check"></i>
+  <span id="toastMsg"></span>
+</div>
+
+<script>
+  // ── Client-side filter & search (works on the server-rendered rows) ──────
+  let currentFilter = 'all';
+
+  function setFilter(f, el) {
+    currentFilter = f;
+    document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    filterTable();
+  }
+
+  function filterTable() {
+    const q = document.getElementById('searchInput').value.toLowerCase();
+    const rows = document.querySelectorAll('#ticketTableBody tr:not(.empty-row)');
+    let visible = 0;
+
+    rows.forEach(row => {
+      const status = row.getAttribute('data-status');
+      const area   = row.getAttribute('data-area') || '';
+      const desc   = row.getAttribute('data-desc') || '';
+
+      const matchFilter = (currentFilter === 'all' || status === currentFilter);
+      const matchSearch = (!q || area.includes(q) || desc.includes(q));
+
+      row.style.display = (matchFilter && matchSearch) ? '' : 'none';
+      if (matchFilter && matchSearch) visible++;
+    });
+
+    // Show empty message if no visible rows
+    const emptyRow = document.querySelector('#ticketTableBody .empty-row');
+    if (emptyRow) emptyRow.style.display = visible === 0 ? '' : 'none';
+  }
+
+  // ── Modal ─────────────────────────────────────────────────────────────────
+  function openModal(src) {
+    document.getElementById('modalImg').src = src;
+    document.getElementById('imgModal').classList.add('open');
+  }
+  function closeModal(e) {
+    if (e.target.id === 'imgModal') document.getElementById('imgModal').classList.remove('open');
+  }
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') document.getElementById('imgModal').classList.remove('open');
+  });
+
+  // ── Toast ─────────────────────────────────────────────────────────────────
+  let toastTimer;
+  function showToast(msg) {
+    clearTimeout(toastTimer);
+    document.getElementById('toastMsg').textContent = msg;
+    const toast = document.getElementById('toast');
+    toast.classList.add('show');
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 3000);
+  }
+
+  // ── Auto-refresh via polling (every 10s) ──────────────────────────────────
+  setInterval(() => {
+    fetch('/api/tickets')
+      .then(r => r.json())
+      .then(data => {
+        // Update stats
+        document.getElementById('statTotal').textContent    = data.length;
+        document.getElementById('statPending').textContent  = data.filter(t => t.status === 'Pending').length;
+        document.getElementById('statResolved').textContent = data.filter(t => t.status === 'Resolved').length;
+        document.getElementById('statUrgent').textContent   = data.filter(t => t.urgent && t.status === 'Pending').length;
+      })
+      .catch(() => {});
+  }, 10000);
+</script>
+</body>
+</html>
