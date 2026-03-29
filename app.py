@@ -5,7 +5,9 @@ Provides session-based authentication, SQLite storage for tickets,
 and image upload handling.  All frontend design is preserved as-is.
 """
 
+import hashlib
 import os
+import secrets
 import sqlite3
 import uuid
 from functools import wraps
@@ -14,26 +16,65 @@ from datetime import datetime
 from dotenv import load_dotenv
 from flask import (
     Flask, render_template, request, redirect,
-    url_for, session, jsonify, flash
+    url_for, session, jsonify, flash, send_from_directory, abort
 )
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 load_dotenv()
 
 # ── App Configuration ────────────────────────────────────────────────────────
+_base_dir = os.path.dirname(os.path.abspath(__file__))
+# Vercel sets VERCEL=1; VERCEL_ENV is preview | development | production
+_vercel = bool(os.environ.get("VERCEL") or os.environ.get("VERCEL_ENV"))
+
+# Vercel CDN serves public/**; keep legacy ./static as fallback for local/Docker
+_static_root = os.path.join(_base_dir, "public", "static")
+if not os.path.isdir(_static_root):
+    _static_root = os.path.join(_base_dir, "static")
+
 _is_production = os.environ.get("FLASK_ENV", "").lower() == "production"
 _debug = os.environ.get("FLASK_DEBUG", "0").strip().lower() in ("1", "true", "yes")
 if _is_production:
     _debug = False
 
-app = Flask(__name__)
+app = Flask(
+    __name__,
+    static_folder=_static_root,
+    static_url_path="/static",
+    template_folder=os.path.join(_base_dir, "templates"),
+)
 _secret = os.environ.get("SECRET_KEY")
 if _is_production and not _secret:
-    raise RuntimeError("SECRET_KEY must be set when FLASK_ENV=production")
+    # Vercel Preview: random key per cold start (sessions fragile).
+    _vercel_preview = _vercel and os.environ.get("VERCEL_ENV", "") != "production"
+    if _vercel_preview:
+        _secret = secrets.token_urlsafe(48)
+    elif _vercel:
+        # Production on Vercel without SECRET_KEY: deterministic per deployment so all
+        # instances share one key (sessions work). Set SECRET_KEY in the dashboard for stronger security.
+        _dep = (
+            os.environ.get("VERCEL_DEPLOYMENT_ID")
+            or os.environ.get("VERCEL_GIT_COMMIT_SHA")
+            or "vercel"
+        )
+        _secret = hashlib.sha256(f"waste-app:{_dep}".encode()).hexdigest()
+    else:
+        raise RuntimeError(
+            "SECRET_KEY must be set when FLASK_ENV=production. "
+            "Vercel: Project → Settings → Environment Variables → add SECRET_KEY."
+        )
 app.secret_key = _secret or "dev-only-insecure-not-for-production"
 app.config["DEBUG"] = _debug
 
-if os.environ.get("BEHIND_PROXY", "").strip().lower() in ("1", "true", "yes"):
+_proxy_flag = os.environ.get("BEHIND_PROXY", "").strip().lower()
+if _proxy_flag in ("0", "false", "no"):
+    _use_proxy = False
+elif _proxy_flag in ("1", "true", "yes"):
+    _use_proxy = True
+else:
+    _use_proxy = _vercel
+
+if _use_proxy:
     app.wsgi_app = ProxyFix(
         app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1
     )
@@ -42,12 +83,23 @@ if os.environ.get("SESSION_COOKIE_SECURE", "").strip().lower() in ("1", "true", 
     app.config["SESSION_COOKIE_SECURE"] = True
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+elif os.environ.get("VERCEL_ENV") == "production":
+    app.config["SESSION_COOKIE_SECURE"] = True
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
-UPLOAD_FOLDER = os.path.join(app.static_folder, 'uploads')
+if _vercel:
+    UPLOAD_FOLDER = os.path.join("/tmp", "waste_uploads")
+else:
+    UPLOAD_FOLDER = os.path.join(app.static_folder, "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-_base_dir = os.path.dirname(os.path.abspath(__file__))
-DATABASE = os.environ.get("DATABASE_PATH") or os.path.join(_base_dir, 'waste.db')
+if os.environ.get("DATABASE_PATH"):
+    DATABASE = os.environ["DATABASE_PATH"]
+elif _vercel:
+    DATABASE = os.path.join("/tmp", "waste.db")
+else:
+    DATABASE = os.path.join(_base_dir, "waste.db")
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp', 'gif'}
 
@@ -58,7 +110,9 @@ def get_db():
     """Open a new database connection."""
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row          # dict-like rows
-    conn.execute("PRAGMA journal_mode=WAL")  # better concurrency
+    # WAL creates -wal/-shm files; some serverless /tmp setups handle this poorly
+    if not _vercel:
+        conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
 
@@ -148,6 +202,14 @@ def allowed_file(filename):
     """Check if the uploaded file has an allowed extension."""
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+@app.route("/uploads/<filename>")
+def serve_upload(filename):
+    """Serve user-uploaded images (Vercel: files live in /tmp, not in public/)."""
+    if ".." in filename or "/" in filename or "\\" in filename:
+        abort(404)
+    return send_from_directory(UPLOAD_FOLDER, filename)
 
 
 # ── Routes ───────────────────────────────────────────────────────────────────

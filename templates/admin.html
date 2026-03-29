@@ -218,7 +218,7 @@
                 <td class="desc-cell"><p title="{{ t.description }}">{{ t.description }}</p></td>
                 <td>
                   {% if t.image %}
-                  <img src="/static/uploads/{{ t.image }}" class="thumb-img" onclick="openModal('/static/uploads/{{ t.image }}')" title="Click to enlarge" alt="Ticket image"/>
+                  <img src="/uploads/{{ t.image }}" class="thumb-img" onclick="openModal('/uploads/{{ t.image }}')" title="Click to enlarge" alt="Ticket image"/>
                   {% else %}
                   <div class="no-img"><i class="fa-regular fa-image"></i></div>
                   {% endif %}
